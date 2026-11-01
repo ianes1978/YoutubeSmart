@@ -136,6 +136,26 @@
 
     <!-- Colonna destra: JSON + Playlist -->
     <aside class="lg:col-span-2 space-y-4">
+      <!-- Prompt per generare l'input JSON -->
+      <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800 p-4">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <div>
+            <h3 class="text-sm font-semibold">Prompt per generare l'input</h3>
+            <p class="text-[11px] text-zinc-500">Copialo nella tua AI preferita, poi incolla qui sotto il JSON che ti restituisce.</p>
+          </div>
+          <button id="btn-copy-prompt" class="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold transition">
+            <svg id="icon-copy" viewBox="0 0 24 24" class="w-4 h-4 fill-current"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+            <svg id="icon-copied" viewBox="0 0 24 24" class="w-4 h-4 fill-current text-emerald-400 hidden"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>
+            <span id="copy-label">Copia</span>
+          </button>
+        </div>
+        <input id="prompt-link" type="url" inputmode="url" autocomplete="off"
+          class="w-full mb-2 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600"
+          placeholder="(Facoltativo) Incolla qui il link YouTube: sostituirà [LINK]" />
+        <pre id="prompt-text" tabindex="0" title="Clicca per selezionare tutto"
+          class="scroll-thin select-all cursor-text whitespace-pre-wrap break-words max-h-56 overflow-y-auto rounded-lg bg-zinc-950 border border-zinc-800 p-3 font-mono text-[11px] leading-relaxed text-zinc-300"></pre>
+      </div>
+
       <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800 p-4">
         <div class="flex items-center justify-between mb-2">
           <label for="json-input" class="text-sm font-semibold">Input JSON</label>
@@ -621,6 +641,47 @@
       if (state.isPlaying) state.player.pauseVideo();
       else state.player.playVideo();
     }
+
+    // ---------- Prompt da copiare ----------
+    const PROMPT_TEMPLATE = `Analizza [LINK]. Dimmi in 5 punti:
+1) Il succo del video senza giri di parole;
+2) L'autore parla per competenza reale o sono solo opinioni personali?;
+3) Quanta fuffa c'è rispetto alla durata totale (indicami i minuti esatti da guardare);
+4) Vale il mio tempo o mi basta leggere questo tuo riassunto?;
+5) Input per il mio Player: dammi un blocco di codice JSON (pronto per il copia-incolla) con i soli spezzoni utili e i tempi convertiti in secondi interi, usando esattamente questo formato:
+{"video_id": "ID_VIDEO", "clips": [{"start": 0, "end": 0, "label": "MM:SS-MM:SS", "title": "Argomento"}]}`;
+
+    function currentPrompt() {
+      const link = $('prompt-link').value.trim();
+      return link ? PROMPT_TEMPLATE.replace('[LINK]', link) : PROMPT_TEMPLATE;
+    }
+    function renderPrompt() { $('prompt-text').textContent = currentPrompt(); }
+
+    async function copyPrompt() {
+      const text = currentPrompt();
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {
+        // Fallback per contesti non sicuri / browser datati
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { ok = document.execCommand('copy'); } catch (_) {}
+        ta.remove();
+      }
+      $('copy-label').textContent = ok ? 'Copiato!' : 'Seleziona e copia';
+      $('icon-copy').classList.toggle('hidden', ok);
+      $('icon-copied').classList.toggle('hidden', !ok);
+      clearTimeout(copyPrompt._t);
+      copyPrompt._t = setTimeout(() => {
+        $('copy-label').textContent = 'Copia';
+        $('icon-copy').classList.remove('hidden');
+        $('icon-copied').classList.add('hidden');
+      }, 1800);
+    }
+
+    $('btn-copy-prompt').addEventListener('click', copyPrompt);
+    $('prompt-link').addEventListener('input', renderPrompt);
+    renderPrompt();
 
     // ---------- Eventi UI ----------
     $('btn-load').addEventListener('click', loadFromTextarea);

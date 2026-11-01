@@ -1,6 +1,6 @@
 // Service worker: rende l'app installabile e ne mette in cache la shell.
 // I video YouTube non vengono messi in cache (richiedono comunque la connessione).
-const CACHE = 'smart-clips-v1';
+const CACHE = 'smart-clips-v2';
 const SHELL = [
   './',
   './index.html',

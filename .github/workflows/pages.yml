@@ -24,11 +24,19 @@ jobs:
       - name: Cancel stuck Pages deployments
         env:
           GH_TOKEN: ${{ github.token }}
+          STUCK: 42ed295e35caed404590a3558c8afa7669a184df
         run: |
-          # Annulla eventuali deploy rimasti "in corso" che bloccano i nuovi
-          for sha in 42ed295e35caed404590a3558c8afa7669a184df; do
-            gh api -X POST "repos/${{ github.repository }}/pages/deployments/$sha/cancel" \
-              && echo "Cancelled $sha" || echo "Nothing to cancel for $sha"
+          # Annulla il deploy rimasto "in corso" che blocca i nuovi e attende che risulti chiuso
+          api="repos/${{ github.repository }}/pages/deployments/$STUCK"
+          gh api "$api" || true
+          gh api -X POST "$api/cancel" && echo "Cancel requested for $STUCK" || echo "Cancel request failed"
+          for i in $(seq 1 24); do
+            status=$(gh api "$api" --jq .status 2>/dev/null || echo unknown)
+            echo "Status of $STUCK: $status"
+            case "$status" in
+              deployment_in_progress|syncing_files|finished_file_sync|updating_pages|deployment_queued|unknown) sleep 5 ;;
+              *) break ;;
+            esac
           done
 
       - uses: actions/checkout@v4

@@ -842,6 +842,26 @@ TRASCRIZIONE:
     $('prompt-link').addEventListener('input', renderPrompt);
     renderPrompt();
 
+    // ---------- Condivisione da YouTube (Web Share Target) ----------
+    // Quando dall'app YouTube si condivide verso "Smart Clips", la pagina viene aperta con
+    // ?title=…&text=…&url=…: estraiamo il link del video e lo mettiamo nel campo del prompt.
+    (function handleSharedLink() {
+      const params = new URLSearchParams(location.search);
+      const shared = ['url', 'text', 'title'].map((k) => params.get(k) || '').join(' ');
+      if (!shared.trim()) return;
+      const m = shared.match(/https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\/[^\s"'<>]+/i);
+      const value = m ? m[0] : (/^[A-Za-z0-9_-]{11}$/.test(shared.trim()) ? shared.trim() : '');
+      // Pulisce l'indirizzo, così un ricaricamento non ripete l'operazione
+      history.replaceState(null, '', location.pathname);
+      if (!value) return;
+      $('prompt-link').value = value;
+      renderPrompt();
+      const field = $('prompt-link');
+      field.classList.add('ring-2', 'ring-emerald-500');
+      setTimeout(() => field.classList.remove('ring-2', 'ring-emerald-500'), 2500);
+      field.scrollIntoView({ block: 'center' });
+    })();
+
     // ---------- Eventi UI ----------
     $('btn-load').addEventListener('click', loadFromTextarea);
     $('btn-example').addEventListener('click', () => {

@@ -1,6 +1,6 @@
 // Service worker: rende l'app installabile e ne mette in cache la shell.
 // I video YouTube non vengono messi in cache (richiedono comunque la connessione).
-const CACHE = 'smart-clips-v5';
+const CACHE = 'smart-clips-v6';
 const SHELL = [
   './',
   './index.html',
@@ -40,7 +40,8 @@ self.addEventListener('fetch', (event) => {
   if (req.mode === 'navigate') {
     event.respondWith((async () => {
       try {
-        const fresh = await fetch(req);
+        // no-cache: verifica sempre col server, così gli aggiornamenti si vedono subito
+        const fresh = await fetch(req, { cache: 'no-cache' });
         const cache = await caches.open(CACHE);
         cache.put('./index.html', fresh.clone());
         return fresh;

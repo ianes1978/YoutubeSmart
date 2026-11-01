@@ -83,10 +83,15 @@
           </div>
         </div>
         <div class="mt-4">
-          <div class="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
-            <div id="clip-progress" class="h-full bg-red-600 transition-[width] duration-200 ease-linear" style="width:0%"></div>
+          <div id="seek" role="slider" tabindex="0" aria-label="Posizione nella clip" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+            class="group relative h-6 flex items-center cursor-pointer touch-none select-none outline-none">
+            <div class="relative w-full h-1.5 group-hover:h-2 transition-[height] bg-zinc-800 rounded-full overflow-hidden">
+              <div id="clip-progress" class="absolute inset-y-0 left-0 bg-red-600 transition-[width] duration-200 ease-linear" style="width:0%"></div>
+            </div>
+            <div id="seek-thumb" class="absolute top-1/2 w-4 h-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 ring-4 ring-red-500/20 shadow-lg scale-75 group-hover:scale-100 group-focus-visible:scale-100 transition-transform" style="left:0%"></div>
+            <div id="seek-tip" class="hidden absolute -top-7 -translate-x-1/2 px-1.5 py-0.5 rounded bg-zinc-700 text-[11px] font-mono text-white pointer-events-none" style="left:0%">00:00</div>
           </div>
-          <div class="flex justify-between text-xs font-mono text-zinc-500 mt-1.5">
+          <div class="flex justify-between text-xs font-mono text-zinc-500 mt-0.5">
             <span id="clip-elapsed">00:00</span>
             <span id="clip-remaining">-00:00</span>
           </div>
@@ -115,6 +120,16 @@
             <span id="auto-label" class="text-xs font-semibold w-7 text-red-400">ON</span>
           </div>
         </div>
+      </div>
+
+      <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800 flex flex-col">
+        <div class="flex items-center justify-between px-4 pt-4 pb-2">
+          <h3 class="text-sm font-semibold">Playlist clip</h3>
+          <span id="playlist-count" class="text-xs text-zinc-500">0 clip</span>
+        </div>
+        <ul id="playlist" class="scroll-thin px-2 pb-2 space-y-1.5 max-h-[22rem] overflow-y-auto">
+          <li class="px-2 py-6 text-center text-sm text-zinc-500">Nessuna clip caricata.</li>
+        </ul>
       </div>
 
       <!-- Badge totali (mobile) -->
@@ -177,15 +192,6 @@
         <p class="mt-2 text-[11px] text-zinc-500">Suggerimento: puoi incollare anche il blocco Markdown <code class="text-zinc-400">```json … ```</code>, verrà ripulito automaticamente.</p>
       </div>
 
-      <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800 flex flex-col">
-        <div class="flex items-center justify-between px-4 pt-4 pb-2">
-          <h3 class="text-sm font-semibold">Playlist clip</h3>
-          <span id="playlist-count" class="text-xs text-zinc-500">0 clip</span>
-        </div>
-        <ul id="playlist" class="scroll-thin px-2 pb-2 space-y-1.5 max-h-[28rem] overflow-y-auto">
-          <li class="px-2 py-6 text-center text-sm text-zinc-500">Nessuna clip caricata.</li>
-        </ul>
-      </div>
     </aside>
   </main>
 
@@ -559,7 +565,13 @@
           </li>`;
       }).join('');
       const activeEl = ul.querySelector('.clip-item.active');
-      if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      // Scorre solo dentro la lista, senza mai spostare la pagina/inquadratura del video
+      if (activeEl) {
+        const r = activeEl.getBoundingClientRect();
+        const u = ul.getBoundingClientRect();
+        if (r.top < u.top) ul.scrollTo({ top: ul.scrollTop + (r.top - u.top) - 8, behavior: 'smooth' });
+        else if (r.bottom > u.bottom) ul.scrollTo({ top: ul.scrollTop + (r.bottom - u.bottom) + 8, behavior: 'smooth' });
+      }
     }
 
     function renderNow() {
@@ -592,12 +604,16 @@
       $('play-label').textContent = state.isPlaying ? 'Pausa' : 'Play';
     }
 
-    function updateProgress(t) {
+    function updateProgress(t, force) {
       if (state.current < 0) return;
+      if (seek.dragging && !force) return;
       const c = state.clips[state.current];
       const len = c.end - c.start;
       const elapsed = Math.min(Math.max(t - c.start, 0), len);
-      $('clip-progress').style.width = (len > 0 ? (elapsed / len) * 100 : 0) + '%';
+      const pct = (len > 0 ? (elapsed / len) * 100 : 0);
+      $('clip-progress').style.width = pct + '%';
+      $('seek-thumb').style.left = pct + '%';
+      $('seek').setAttribute('aria-valuenow', String(Math.round(pct)));
       $('clip-elapsed').textContent = fmt(elapsed);
       $('clip-remaining').textContent = '-' + fmt(len - elapsed);
     }
@@ -641,6 +657,91 @@
       if (state.isPlaying) state.player.pauseVideo();
       else state.player.playVideo();
     }
+
+    // ---------- Slider della clip trascinabile ----------
+    const seek = { dragging: false, target: 0, lastLive: 0, wasPlaying: false };
+
+    function seekToInClip(t, commit) {
+      if (!state.player || !state.playerReady || state.current < 0) return;
+      const c = state.clips[state.current];
+      // Evita di finire esattamente su "end", che farebbe scattare subito la clip successiva
+      const target = Math.min(Math.max(t, c.start), Math.max(c.start, c.end - 0.3));
+      state.finishedCurrent = false;
+      guardSeek();
+      state.player.seekTo(target, commit);
+      if (commit) renderStatus();
+    }
+
+    function timeFromPointer(clientX) {
+      const c = state.clips[state.current];
+      const rect = $('seek').getBoundingClientRect();
+      const frac = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
+      return { frac, time: c.start + frac * (c.end - c.start) };
+    }
+
+    function showDrag(frac, time) {
+      const c = state.clips[state.current];
+      $('clip-progress').style.width = (frac * 100) + '%';
+      $('seek-thumb').style.left = (frac * 100) + '%';
+      $('seek-tip').style.left = (frac * 100) + '%';
+      $('seek-tip').textContent = fmt(time - c.start);
+      $('clip-elapsed').textContent = fmt(time - c.start);
+      $('clip-remaining').textContent = '-' + fmt(c.end - time);
+    }
+
+    $('seek').addEventListener('pointerdown', (e) => {
+      if (state.current < 0 || !state.playerReady) return;
+      e.preventDefault();
+      $('seek').setPointerCapture(e.pointerId);
+      $('seek').focus({ preventScroll: true });
+      seek.dragging = true;
+      $('clip-progress').classList.remove('transition-[width]');
+      $('seek-tip').classList.remove('hidden');
+      $('seek-thumb').classList.add('scale-100');
+      const { frac, time } = timeFromPointer(e.clientX);
+      seek.target = time;
+      showDrag(frac, time);
+    });
+
+    $('seek').addEventListener('pointermove', (e) => {
+      if (!seek.dragging) return;
+      const { frac, time } = timeFromPointer(e.clientX);
+      seek.target = time;
+      showDrag(frac, time);
+      // Anteprima live durante il trascinamento (limitata a ~6 al secondo)
+      const now = Date.now();
+      if (now - seek.lastLive > 160) { seek.lastLive = now; seekToInClip(time, false); }
+    });
+
+    function endDrag() {
+      if (!seek.dragging) return;
+      seek.dragging = false;
+      $('clip-progress').classList.add('transition-[width]');
+      $('seek-tip').classList.add('hidden');
+      $('seek-thumb').classList.remove('scale-100');
+      seekToInClip(seek.target, true);
+      updateProgress(seek.target, true);
+    }
+    $('seek').addEventListener('pointerup', endDrag);
+    $('seek').addEventListener('pointercancel', endDrag);
+    $('seek').addEventListener('lostpointercapture', endDrag);
+
+    // Tastiera sullo slider: ←/→ ±5s, Home/End inizio/fine clip
+    $('seek').addEventListener('keydown', (e) => {
+      if (state.current < 0) return;
+      const c = state.clips[state.current];
+      const t = safeTime();
+      let target = null;
+      if (e.key === 'ArrowRight') target = t + 5;
+      else if (e.key === 'ArrowLeft') target = t - 5;
+      else if (e.key === 'Home') target = c.start;
+      else if (e.key === 'End') target = c.end;
+      if (target === null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      seekToInClip(target, true);
+      updateProgress(Math.min(Math.max(target, c.start), c.end), true);
+    });
 
     // ---------- Prompt da copiare ----------
     const PROMPT_TEMPLATE = `Analizza [LINK]. Dimmi in 5 punti:

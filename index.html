@@ -4,6 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>YouTube Smart Clip Player</title>
+  <meta name="description" content="Riproduci in sequenza automatica solo gli spezzoni utili di un video YouTube." />
+  <meta name="theme-color" content="#09090b" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Smart Clips" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = { darkMode: 'class' };
@@ -33,9 +42,15 @@
           <p class="text-xs text-zinc-400">Riproduci solo gli spezzoni utili, in sequenza automatica</p>
         </div>
       </div>
+      <div class="flex items-center gap-2">
+      <button id="btn-install" class="hidden items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold shadow-lg shadow-red-900/30 transition">
+        <svg viewBox="0 0 24 24" class="w-4 h-4 fill-current"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg>
+        Installa app
+      </button>
       <div id="total-badge" class="hidden sm:flex items-center gap-2 text-xs">
         <span class="px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-300">Durata spezzoni: <b id="badge-total" class="text-white">—</b></span>
         <span class="px-2.5 py-1 rounded-full bg-emerald-900/40 text-emerald-300 border border-emerald-800/60">Risparmiato: <b id="badge-saved">—</b></span>
+      </div>
       </div>
     </div>
   </header>
@@ -153,6 +168,17 @@
       </div>
     </aside>
   </main>
+
+  <div id="ios-hint" class="hidden fixed bottom-4 inset-x-4 sm:left-auto sm:right-4 sm:w-96 z-30 rounded-xl bg-zinc-900 ring-1 ring-zinc-700 shadow-2xl p-4 text-sm">
+    <div class="flex items-start gap-3">
+      <img src="icons/icon-192.png" alt="" class="w-10 h-10 rounded-lg" />
+      <div class="flex-1">
+        <p class="font-semibold">Installa Smart Clips</p>
+        <p class="text-zinc-400 text-xs mt-1">Su iPhone/iPad tocca <b>Condividi</b> <span aria-hidden="true">⎋</span> e poi <b>“Aggiungi alla schermata Home”</b>.</p>
+      </div>
+      <button id="ios-hint-close" class="text-zinc-500 hover:text-zinc-300 text-lg leading-none" aria-label="Chiudi">×</button>
+    </div>
+  </div>
 
   <footer class="max-w-7xl mx-auto px-4 pb-6 text-xs text-zinc-600">
     Scorciatoie: <kbd class="px-1 rounded bg-zinc-800 text-zinc-400">Spazio</kbd> play/pausa ·
@@ -481,6 +507,7 @@
         const { videoId, clips } = parseInput($('json-input').value);
         // Riscrive la textarea con il JSON pulito e formattato
         $('json-input').value = JSON.stringify({ video_id: videoId, clips }, null, 2);
+        try { localStorage.setItem('smartclips:last', $('json-input').value); } catch (_) {}
         startPlayback(videoId, clips);
       } catch (err) {
         showError(err.message);
@@ -628,6 +655,53 @@
     renderNow();
     setAutoAdvance(true);
     loadYouTubeApi();
+
+    // Ripristina l'ultimo JSON caricato (senza avviare la riproduzione)
+    try {
+      const last = localStorage.getItem('smartclips:last');
+      if (last) $('json-input').value = last;
+    } catch (_) {}
+
+    // ---------- PWA: service worker + installazione ----------
+    if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((err) => console.warn('SW non registrato:', err));
+      });
+    }
+
+    let deferredPrompt = null;
+    const installBtn = $('btn-install');
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.classList.remove('hidden');
+      installBtn.classList.add('inline-flex');
+    });
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice.catch(() => {});
+      deferredPrompt = null;
+      installBtn.classList.add('hidden');
+      installBtn.classList.remove('inline-flex');
+    });
+    window.addEventListener('appinstalled', () => {
+      installBtn.classList.add('hidden');
+      installBtn.classList.remove('inline-flex');
+    });
+
+    // iOS non supporta beforeinstallprompt: mostra un suggerimento una sola volta
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let hintSeen = false;
+    try { hintSeen = localStorage.getItem('smartclips:ios-hint') === '1'; } catch (_) {}
+    if (isIOS && !isStandalone && !hintSeen) $('ios-hint').classList.remove('hidden');
+    $('ios-hint-close').addEventListener('click', () => {
+      $('ios-hint').classList.add('hidden');
+      try { localStorage.setItem('smartclips:ios-hint', '1'); } catch (_) {}
+    });
   })();
   </script>
 </body>

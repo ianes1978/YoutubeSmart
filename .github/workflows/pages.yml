@@ -1,0 +1,43 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ccr-87d3b434-d1ohas]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Cancel stuck Pages deployments
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Annulla eventuali deploy rimasti "in corso" che bloccano i nuovi
+          for sha in 42ed295e35caed404590a3558c8afa7669a184df; do
+            gh api -X POST "repos/${{ github.repository }}/pages/deployments/$sha/cancel" \
+              && echo "Cancelled $sha" || echo "Nothing to cancel for $sha"
+          done
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -164,9 +164,9 @@
             <span id="copy-label">Copia</span>
           </button>
         </div>
-        <input id="prompt-link" type="url" inputmode="url" autocomplete="off"
+        <input id="prompt-link" type="text" inputmode="url" autocomplete="off"
           class="w-full mb-2 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600"
-          placeholder="(Facoltativo) Incolla qui il link YouTube: sostituirà [LINK]" />
+          placeholder="(Facoltativo) Link o ID del video YouTube: compila ID_VIDEO" />
         <pre id="prompt-text" tabindex="0" title="Clicca per selezionare tutto"
           class="scroll-thin select-all cursor-text whitespace-pre-wrap break-words max-h-56 overflow-y-auto rounded-lg bg-zinc-950 border border-zinc-800 p-3 font-mono text-[11px] leading-relaxed text-zinc-300"></pre>
       </div>
@@ -744,17 +744,25 @@
     });
 
     // ---------- Prompt da copiare ----------
-    const PROMPT_TEMPLATE = `Analizza [LINK]. Dimmi in 5 punti:
+    const PROMPT_TEMPLATE = `Analizza la trascrizione del video che trovi qui sotto. Dimmi in 5 punti:
 1) Il succo del video senza giri di parole;
 2) L'autore parla per competenza reale o sono solo opinioni personali?;
 3) Quanta fuffa c'è rispetto alla durata totale (indicami i minuti esatti da guardare);
 4) Vale il mio tempo o mi basta leggere questo tuo riassunto?;
-5) Input per il mio Player: dammi un blocco di codice JSON (pronto per il copia-incolla) con i soli spezzoni utili e i tempi convertiti in secondi interi, usando esattamente questo formato:
-{"video_id": "ID_VIDEO", "clips": [{"start": 0, "end": 0, "label": "MM:SS-MM:SS", "title": "Argomento"}]}`;
+5) Input per il mio Player: dammi un blocco di codice JSON (pronto per il copia-incolla) con i soli spezzoni utili e i tempi convertiti in secondi interi. 
+IMPORTANTE SUL TIMING: usa solo timestamp realmente presenti nella trascrizione e calcola "start" ed "end" con la formula esatta (ore*3600) + (minuti*60) + secondi (es. 12:32 diventa 12*60 + 32 = 752).
+Usa esattamente questo formato:
+{"video_id": "ID_VIDEO", "clips": [{"start": 0, "end": 0, "label": "MM:SS-MM:SS", "title": "Argomento"}]}
+
+ID_VIDEO: [INCOLLA QUI L'ID DEL VIDEO]
+TRASCRIZIONE:
+[INCOLLA QUI LA TRASCRIZIONE CON I MINUTI]`;
 
     function currentPrompt() {
-      const link = $('prompt-link').value.trim();
-      return link ? PROMPT_TEMPLATE.replace('[LINK]', link) : PROMPT_TEMPLATE;
+      const raw = $('prompt-link').value.trim();
+      if (!raw) return PROMPT_TEMPLATE;
+      const id = normalizeVideoId(raw);
+      return PROMPT_TEMPLATE.replace("[INCOLLA QUI L'ID DEL VIDEO]", () => id);
     }
     function renderPrompt() { $('prompt-text').textContent = currentPrompt(); }
 
